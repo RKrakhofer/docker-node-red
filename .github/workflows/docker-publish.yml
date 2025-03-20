@@ -34,5 +34,5 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          push: true
+          push: false
           tags: ghcr.io/rkrakhofer/node-red:latest
