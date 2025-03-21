@@ -16,11 +16,12 @@ RUN apk add --no-cache \
     ttf-dejavu \
     font-noto
 
-RUN npm install canvas
-
 USER node-red
 # Set working directory
 WORKDIR /usr/src/node-red
+
+RUN npm install canvas
+
 
 # Start Node-RED
 CMD ["node", "node-red"]
