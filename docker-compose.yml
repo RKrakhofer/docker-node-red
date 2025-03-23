@@ -3,7 +3,7 @@ services:
     build: 
       context: .
       dockerfile: Dockerfile
-    network_mode: "host"
+    network_mode: "bridge"
     container_name: node-red
     restart: unless-stopped
     ports:
