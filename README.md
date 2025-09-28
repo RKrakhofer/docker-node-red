@@ -19,18 +19,19 @@ git clone https://github.com/RKrakhofer/docker-node-red.git
 cd docker-node-red
 ```
 
-### 2. Build & Start (Universal Image)
-Use the build script that creates a universal image working on any host:
+### 2. Build & Start (Recommended)
+Use the dynamic build script that automatically configures Docker group permissions:
 ```bash
 ./build-with-docker-group.sh
 ```
 
-**Universal Deployment**: One image works on all hosts through dynamic runtime configuration.
-
 ### 3. Manual Build (Alternative)
 ```bash
-# Build universal image (no host-specific configuration needed)
-docker build -t node-red-node-red .
+# Get Docker group GID
+DOCKER_GID=$(getent group docker | cut -d: -f3)
+
+# Build with Docker group
+docker build --build-arg DOCKER_GID=$DOCKER_GID -t node-red-node-red .
 
 # Start with Docker Compose
 docker compose up -d
@@ -100,16 +101,11 @@ services:
 ```
 
 ### Dynamic Docker Group
-The container automatically configures Docker access at runtime:
-1. **Detects** Docker socket permissions on startup
-2. **Creates/Updates** Docker group with correct GID  
+The build process automatically:
+1. **Detects** the host Docker group GID
+2. **Creates** matching group in container
 3. **Adds** node-red user to Docker group
 4. **Enables** Docker socket access without root
-
-**Universal Compatibility**: 
-- **One image works on all hosts** regardless of Docker group ID
-- **Runtime configuration** adapts to any host automatically
-- **No rebuilding needed** when moving between hosts
 
 ## Security Features
 - ✅ **No root user**: Node-RED runs as `node-red` user
@@ -172,26 +168,8 @@ docker compose logs -f node-red
 ### Permission Issues
 If you get Docker socket permission errors:
 ```bash
-# Check container startup logs
-docker compose logs node-red
-
-# Verify Docker socket permissions
-docker exec node-red ls -la /var/run/docker.sock
-
-# Restart container to re-configure permissions
-docker compose restart node-red
-```
-
-### Multi-Host Deployment
-The same image works on any host:
-```bash
-# Same commands work on any host
-git clone https://github.com/RKrakhofer/docker-node-red.git
-cd docker-node-red
+# Rebuild with correct Docker group
 ./build-with-docker-group.sh
-
-# Or with existing image
-docker compose up -d
 ```
 
 ### Healthcheck Failures
@@ -217,9 +195,8 @@ docker system prune -f
 ## File Structure
 ```
 ├── Dockerfile                           # Main Docker image
-├── docker-compose.yml                   # Container orchestration  
-├── entrypoint.sh                        # Dynamic runtime configuration
-├── build-with-docker-group.sh          # Universal build script
+├── docker-compose.yml                   # Container orchestration
+├── build-with-docker-group.sh          # Dynamic build script
 ├── DOCKER_RESTART.md                   # Restart options documentation
 └── README.md                           # This file
 ```
