@@ -1,34 +1,42 @@
 #!/bin/bash
 
-# build-with-docker-group.sh
-# Dynamisch Docker-Gruppe ermitteln und Container bauen
+# build.sh
+# Einfacher Build ohne Host-spezifische Konfiguration
+# Image funktioniert auf jedem Host durch dynamischen Entrypoint
 
-echo "Ermittle Docker-Gruppe GID..."
-DOCKER_GID=$(getent group docker | cut -d: -f3)
+echo "� Baue universelles Node-RED Image..."
+echo "🌍 Image funktioniert auf jedem Host (dynamische Docker-Gruppe)"
 
-if [ -z "$DOCKER_GID" ]; then
-    echo "Fehler: Docker-Gruppe nicht gefunden!"
-    echo "Stelle sicher, dass Docker installiert ist und die Gruppe existiert."
+# Stoppe bestehende Container
+echo "🛑 Stoppe bestehende Container..."
+docker compose down 2>/dev/null || true
+
+# Baue universelles Image
+echo "🏗️  Baue Image..."
+docker build --no-cache -t node-red-node-red .
+
+if [ $? -ne 0 ]; then
+    echo "❌ Docker Build fehlgeschlagen!"
     exit 1
 fi
 
-echo "Docker-Gruppe GID: $DOCKER_GID"
-
-# Stoppe bestehende Container
-echo "Stoppe bestehende Container..."
-docker compose down
-
-# Baue Image mit dynamischer Docker-GID
-echo "Baue Node-RED Image mit Docker-Gruppe GID $DOCKER_GID..."
-docker build \
-    --build-arg DOCKER_GID=$DOCKER_GID \
-    --no-cache \
-    -t node-red-node-red \
-    .
-
 # Starte Container
-echo "Starte Container..."
+echo "🚀 Starte Container..."
 docker compose up -d
 
-echo "✅ Container erfolgreich gestartet mit Docker-Gruppe GID: $DOCKER_GID"
-echo "Node-RED läuft unter: http://localhost:1880"
+if [ $? -eq 0 ]; then
+    echo ""
+    echo "🎉 Container erfolgreich gestartet!"
+    echo "🌍 Image funktioniert auf jedem Host (universell)"
+    echo "🌐 Node-RED: http://localhost:1880"
+    echo "💚 Healthcheck: http://localhost:1880/healthcheck"
+    echo ""
+    echo "🔧 Debug-Befehle:"
+    echo "  docker compose ps                    # Container Status"
+    echo "  docker compose logs -f node-red     # Live Logs"
+    echo "  docker exec node-red id             # User/Group Info"
+    echo "  docker exec node-red ls -la /var/run/docker.sock  # Socket Permissions"
+else
+    echo "❌ Container-Start fehlgeschlagen!"
+    exit 1
+fi

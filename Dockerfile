@@ -1,11 +1,8 @@
 # Use the official Node-RED base image
 FROM nodered/node-red:latest
 
-# Build argument for Docker group GID
-ARG DOCKER_GID=999
-
 USER root
-# Install required libraries including docker cli
+# Install required libraries including docker cli and su-exec
 RUN apk add --no-cache \
     build-base \
     cairo-dev \
@@ -19,11 +16,8 @@ RUN apk add --no-cache \
     ttf-dejavu \
     font-noto \
     curl \
-    docker-cli
-
-# Create docker group with dynamic GID from host and add node-red user to it
-RUN addgroup -g ${DOCKER_GID} docker || addgroup docker
-RUN adduser node-red docker
+    docker-cli \
+    su-exec
 
 USER node-red
 # Set working directory
@@ -31,5 +25,11 @@ WORKDIR /usr/src/node-red
 
 RUN npm install canvas
 
-# Start Node-RED as node-red user (not root)
-CMD ["node", "node-red"]
+# Copy dynamic entrypoint
+COPY --chown=root:root entrypoint.sh /usr/local/bin/entrypoint.sh
+USER root
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Use dynamic entrypoint that configures Docker group at runtime
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["node-red"]
