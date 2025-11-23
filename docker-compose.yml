@@ -10,7 +10,6 @@ services:
       - "1880:1880"
     volumes:
       - node-red-volume:/data
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Europe/Vienna
     healthcheck:

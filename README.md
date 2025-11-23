@@ -1,15 +1,14 @@
-# Dockerized Node-RED with Canvas Support & Auto-Restart
+# Dockerized Node-RED with Canvas Support
 
-This repository provides a **Dockerfile** for running Node-RED with additional **Canvas support** and **automatic container restart** functionality. It is built on top of the official Node-RED Docker image and includes necessary dependencies for graphics rendering and Docker socket access.
+This repository provides a **Dockerfile** for running Node-RED with additional **Canvas support**. It is built on top of the official Node-RED Docker image and includes necessary dependencies for graphics rendering.
 
 ## Features
-- Based on official **Node-RED**:latest
-- Includes necessary **system libraries** for rendering (e.g., Cairo, Pango, Fontconfig, Pixman)
+- Based on official **Node-RED 4.1.0**
+- Includes necessary **system libraries** for rendering (Cairo, Pango, Fontconfig, Pixman, etc.)
 - Installs **canvas** for graphical operations in Node-RED
-- **Docker CLI** integration for container management
-- **Automatic container restart** via Healthcheck
-- **Dynamic Docker group** configuration
-- Runs as the **node-red** user for security (not root)
+- Persistent data storage with Docker volumes
+- Healthcheck monitoring
+- Runs as the **node-red** user for security
 
 ## Quick Start
 
@@ -19,80 +18,33 @@ git clone https://github.com/RKrakhofer/docker-node-red.git
 cd docker-node-red
 ```
 
-### 2. Build & Start (Recommended)
-Use the dynamic build script that automatically configures Docker group permissions:
+### 2. Build & Start
 ```bash
-./build-with-docker-group.sh
-```
-
-### 3. Manual Build (Alternative)
-```bash
-# Get Docker group GID
-DOCKER_GID=$(getent group docker | cut -d: -f3)
-
-# Build with Docker group
-docker build --build-arg DOCKER_GID=$DOCKER_GID -t node-red-node-red .
-
-# Start with Docker Compose
 docker compose up -d
 ```
 
-## Healthcheck & Auto-Restart
-
-### Features
-- **Custom Healthcheck Endpoint**: `/healthcheck`
-- **Automatic Container Restart**: When healthcheck fails
-- **Docker Socket Integration**: Container can restart itself
-- **Flow Context Control**: Set health status from any Node-RED flow
-
-### Available Flows
-These flows need to be imported manually in the Node-RED web interface:
-
-#### 1. Simple Healthcheck Flow
-- Basic healthcheck without auto-restart
-- Uses flow context: `{ health: { state: true|false, text: "message" } }`
-- **Import**: Copy and paste the flow from generated `simple-healthcheck-flow.json`
-
-#### 2. Auto-Restart Healthcheck Flow  
-- **Automatic container restart** on healthcheck failure
-- Includes Docker socket integration
-- Test buttons for triggering restarts
-- **Import**: Copy and paste the flow from generated `healthcheck-auto-restart-flow.json`
-
-**Note**: Flow JSON files are generated locally and not included in this repository. Import them manually via Node-RED's import function.
-
-### Usage Example
-```javascript
-// In any Node-RED Function node
-
-// Set healthy status
-flow.set('health', {
-    state: true,
-    text: 'All systems operational'
-});
-
-// Trigger container restart
-flow.set('health', {
-    state: false,
-    text: 'Critical error - restarting container'
-});
+### 3. Access Node-RED
+Open your browser and navigate to:
+```
+http://localhost:1880
 ```
 
 ## Configuration
 
 ### Docker Compose Setup
 The `docker-compose.yml` includes:
-- **Volume mounting** for persistent data
-- **Docker socket access** for container management
-- **Healthcheck configuration** with curl
-- **Auto-restart policy**
+- **Volume mounting** for persistent data storage
+- **Healthcheck configuration** for monitoring
+- **Auto-restart policy** (unless manually stopped)
 
 ```yaml
 services:
   node-red:
+    build: 
+      context: .
+      dockerfile: Dockerfile
     volumes:
       - node-red-volume:/data
-      - /var/run/docker.sock:/var/run/docker.sock  # Docker access
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:1880/healthcheck"]
       interval: 30s
@@ -145,41 +97,32 @@ The following system libraries are installed for **Canvas** and **Docker** suppo
 ```bash
 # View container status (including health)
 docker compose ps
+      start_period: 40s
+```
 
-# View healthcheck logs
+## Management Commands
+
+```bash
+# Build the image
+docker compose build
+
+# Start the container
+docker compose up -d
+
+# Stop the container
+docker compose down
+
+# View healthcheck status
 docker inspect node-red | grep -A 10 Health
-
-# Manual restart
-docker compose restart node-red
 
 # View logs
 docker compose logs -f node-red
-```
 
-### Testing Auto-Restart
-1. Start the container: `./build-with-docker-group.sh`
-2. Access Node-RED: http://localhost:1880
-3. Create or import an auto-restart healthcheck flow
-4. Set unhealthy status via flow context or inject node
-5. Wait 5 seconds - container will restart automatically
+# Restart container
+docker compose restart node-red
+```
 
 ## Troubleshooting
-
-### Permission Issues
-If you get Docker socket permission errors:
-```bash
-# Rebuild with correct Docker group
-./build-with-docker-group.sh
-```
-
-### Healthcheck Failures
-```bash
-# Test healthcheck manually
-docker exec node-red curl -f http://localhost:1880/healthcheck
-
-# Check if healthcheck flow is deployed in Node-RED web interface
-# Create a flow that responds to GET /healthcheck
-```
 
 ### Container Won't Start
 ```bash
@@ -188,51 +131,37 @@ docker compose logs node-red
 
 # Rebuild completely
 docker compose down
-docker system prune -f
-./build-with-docker-group.sh
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Healthcheck Failures
+```bash
+# Test healthcheck manually
+docker exec node-red curl -f http://localhost:1880/healthcheck
+
+# The healthcheck endpoint is provided by Node-RED
 ```
 
 ## File Structure
 ```
-├── Dockerfile                           # Main Docker image
-├── docker-compose.yml                   # Container orchestration
-├── build-with-docker-group.sh          # Dynamic build script
-├── DOCKER_RESTART.md                   # Restart options documentation
-└── README.md                           # This file
+├── Dockerfile                # Custom Node-RED image with Canvas
+├── docker-compose.yml        # Container configuration
+└── README.md                 # This file
 ```
 
-**Generated locally (not in repo):**
-- `simple-healthcheck-flow.json` - Basic healthcheck flow
-- `healthcheck-auto-restart-flow.json` - Auto-restart flow  
-- `SIMPLE_HEALTHCHECK.md` - Simple flow documentation
-- `HEALTHCHECK_AUTO_RESTART.md` - Auto-restart documentation
+## Data Persistence
 
-## Advanced Usage
-
-### Custom Flows
-Place your flows in the mounted volume:
+All Node-RED data (flows, settings, installed nodes) is stored in the `node-red-volume` Docker volume:
 ```bash
-# Flows are persisted in the external volume
+# Inspect volume
 docker volume inspect node-red-volume
-```
 
-### Environment Variables
-Configure timezone and other settings:
-```yaml
-environment:
-  - TZ=Europe/Vienna
-  - NODE_RED_ENABLE_PROJECTS=true
-```
+# Backup volume
+docker run --rm -v node-red-volume:/data -v $(pwd):/backup alpine tar czf /backup/node-red-backup.tar.gz /data
 
-### GHCR Publishing
-```bash
-# Build and tag for GHCR
-docker build --build-arg DOCKER_GID=$(getent group docker | cut -d: -f3) \
-  -t ghcr.io/rkrakhofer/node-red:latest .
-
-# Push to GitHub Container Registry
-echo $GHCR_PAT | docker login ghcr.io -u RKrakhofer --password-stdin
-docker push ghcr.io/rkrakhofer/node-red:latest
+# Restore volume
+docker run --rm -v node-red-volume:/data -v $(pwd):/backup alpine tar xzf /backup/node-red-backup.tar.gz -C /
 ```
 
 ## License

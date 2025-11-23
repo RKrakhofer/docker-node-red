@@ -1,11 +1,12 @@
 # Use the official Node-RED base image
-FROM nodered/node-red:latest
+FROM nodered/node-red:4.1.0
 
 # Build argument for Docker group GID
 ARG DOCKER_GID=999
 
 USER root
-# Install required libraries including docker cli
+
+# Install required libraries for canvas
 RUN apk add --no-cache \
     build-base \
     cairo-dev \
@@ -17,18 +18,14 @@ RUN apk add --no-cache \
     pkgconf \
     fontconfig \
     ttf-dejavu \
-    font-noto \
-    curl \
-    docker-cli
-
-# Create docker group with dynamic GID from host and add node-red user to it
-RUN addgroup -g ${DOCKER_GID} docker || addgroup docker
-RUN adduser node-red docker
+    font-noto
 
 USER node-red
+
 # Set working directory
 WORKDIR /usr/src/node-red
 
+# Install canvas in the Node-RED directory
 RUN npm install canvas
 
 # Start Node-RED as node-red user (not root)
