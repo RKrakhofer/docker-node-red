@@ -1,5 +1,5 @@
 # Use the official Node-RED base image
-FROM nodered/node-red:4.1.1
+FROM nodered/node-red:4.1.5
 
 # Build argument for Docker group GID
 ARG DOCKER_GID=999

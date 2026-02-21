@@ -40,4 +40,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/rkrakhofer/node-red:latest
+          tags: ghcr.io/rkrakhofer/docker-node-red:latest

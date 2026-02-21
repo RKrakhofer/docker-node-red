@@ -3,12 +3,18 @@
 This repository provides a **Dockerfile** for running Node-RED with additional **Canvas support**. It is built on top of the official Node-RED Docker image and includes necessary dependencies for graphics rendering.
 
 ## Features
-- Based on official **Node-RED 4.1.0**
+- Based on official **Node-RED 4.1.5** (Node.js 20)
 - Includes necessary **system libraries** for rendering (Cairo, Pango, Fontconfig, Pixman, etc.)
 - Installs **canvas** for graphical operations in Node-RED
 - Persistent data storage with Docker volumes
 - Healthcheck monitoring
 - Runs as the **node-red** user for security
+
+## Security & Updates
+
+> **Note on Base Image Updates:**  
+> Current version uses Node.js 20 Alpine base image. Waiting for official Node-RED release with Node.js 24 support to reduce security vulnerabilities (currently -3H, -2L compared to Node 20).  
+> Base image will be updated once `nodered/node-red` officially supports Node 24 Alpine.
 
 ## Quick Start
 
