@@ -1,0 +1,79 @@
+<!-- UI Template for Node-RED dashboard: Price Widget -->
+<style>
+/* Price Widget: Inherit TACTICAL CSS styling */
+#price-chart-widget {
+    background-color: transparent !important;
+    color: inherit !important;
+    font-family: inherit !important;
+}
+#price-chart-widget canvas {
+    background-color: transparent !important;
+}
+</style>
+
+<div id="price-chart-widget" style="width:100%;height:200px;min-height:180px;overflow:hidden"></div>
+
+<script>
+(function(scope) {
+    var widgetId = 'price-chart-widget';
+    var retryTimer = null;
+    var nowLineInterval = null;
+    
+    // Load widget script once (only if not already loaded or loading)
+    if (!window.PriceWidget && !window._priceWidgetLoading) {
+        window._priceWidgetLoading = true;
+        var s = document.createElement('script');
+        s.src = '/public/price-widget.js';
+        s.onload = function() { 
+            console.log('[Price Widget] Script loaded');
+            window._priceWidgetLoading = false;
+        };
+        s.onerror = function() { 
+            console.error('Failed to load price-widget.js'); 
+            window._priceWidgetLoading = false;
+        };
+        document.head.appendChild(s);
+    }
+    
+    // Update now-line every minute
+    if (!nowLineInterval) {
+        nowLineInterval = setInterval(function() {
+            if (window.PriceWidget && window.PriceWidget.updateNowLine) {
+                window.PriceWidget.updateNowLine(widgetId);
+            }
+        }, 60000); // 60 seconds
+    }
+    
+    // Watch for incoming messages
+    scope.$watch('msg', function(msg) {
+        // Clear any pending retry
+        if (retryTimer) {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+        }
+        
+        if (!msg || !msg.payload) {
+            return;
+        }
+        
+        // Filter: Only process array payloads (chart data)
+        if (!Array.isArray(msg.payload)) {
+            return;
+        }
+        
+        // Render widget
+        function tryRender(attempt) {
+            attempt = attempt || 0;
+            if (window.PriceWidget && typeof window.PriceWidget.render === 'function') {
+                window.PriceWidget.render(widgetId, msg.payload, { height: '200px' });
+            } else if (attempt < 50) { // Max 5 seconds
+                retryTimer = setTimeout(function() { tryRender(attempt + 1); }, 100);
+            } else {
+                console.error('[Price Widget] Timeout waiting for script');
+            }
+        }
+        
+        tryRender(0);
+    });
+})(scope);
+</script>

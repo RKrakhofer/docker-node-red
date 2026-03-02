@@ -28,5 +28,12 @@ WORKDIR /usr/src/node-red
 # Install canvas in the Node-RED directory
 RUN npm install canvas
 
+# Copy bundled public files into the image so a fresh named volume can be populated
+USER root
+RUN mkdir -p /data/public
+COPY public /data/public
+RUN chown -R 1000:1000 /data/public || true
+USER node-red
+
 # Start Node-RED as node-red user (not root)
 CMD ["node", "node-red"]
