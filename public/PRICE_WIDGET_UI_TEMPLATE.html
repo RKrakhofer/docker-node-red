@@ -18,21 +18,41 @@
     var widgetId = 'price-chart-widget';
     var retryTimer = null;
     var nowLineInterval = null;
+    var scriptLoadAttempts = 0;
+    var MAX_SCRIPT_LOAD_ATTEMPTS = 3;
     
-    // Load widget script once (only if not already loaded or loading)
-    if (!window.PriceWidget && !window._priceWidgetLoading) {
-        window._priceWidgetLoading = true;
+    // Load widget script with retry logic
+    function loadWidgetScript() {
+        if (window.PriceWidget) {
+            console.log('[Price Widget] Already loaded');
+            return;
+        }
+        
+        if (scriptLoadAttempts >= MAX_SCRIPT_LOAD_ATTEMPTS) {
+            console.error('[Price Widget] Max script load attempts reached');
+            document.getElementById(widgetId).innerHTML = '<div style="color:#FF4136;padding:10px">Script load failed</div>';
+            return;
+        }
+        
+        scriptLoadAttempts++;
+        console.log('[Price Widget] Loading script (attempt ' + scriptLoadAttempts + ')');
+        
         var s = document.createElement('script');
-        s.src = '/public/price-widget.js';
+        s.src = '/public/price-widget.js?v=' + Date.now(); // Cache-busting
         s.onload = function() { 
-            console.log('[Price Widget] Script loaded');
-            window._priceWidgetLoading = false;
+            console.log('[Price Widget] Script loaded successfully');
+            scriptLoadAttempts = 0; // Reset on success
         };
         s.onerror = function() { 
-            console.error('Failed to load price-widget.js'); 
-            window._priceWidgetLoading = false;
+            console.error('[Price Widget] Script load error, retry in 2s');
+            setTimeout(loadWidgetScript, 2000);
         };
         document.head.appendChild(s);
+    }
+    
+    // Start loading if not already present
+    if (!window.PriceWidget) {
+        loadWidgetScript();
     }
     
     // Update now-line every minute
@@ -61,15 +81,24 @@
             return;
         }
         
-        // Render widget
+        // Render widget with exponential backoff
         function tryRender(attempt) {
             attempt = attempt || 0;
+            
             if (window.PriceWidget && typeof window.PriceWidget.render === 'function') {
-                window.PriceWidget.render(widgetId, msg.payload, { height: '200px' });
-            } else if (attempt < 50) { // Max 5 seconds
-                retryTimer = setTimeout(function() { tryRender(attempt + 1); }, 100);
+                console.log('[Price Widget] Rendering chart (attempt ' + attempt + ')');
+                try {
+                    window.PriceWidget.render(widgetId, msg.payload, { height: '200px' });
+                } catch(e) {
+                    console.error('[Price Widget] Render error:', e);
+                    document.getElementById(widgetId).innerHTML = '<div style="color:#FF4136;padding:10px">Render error: ' + e.message + '</div>';
+                }
+            } else if (attempt < 100) { // Max 20 seconds with exponential backoff
+                var delay = Math.min(100 * Math.pow(1.1, attempt), 2000); // 100ms → 2s
+                retryTimer = setTimeout(function() { tryRender(attempt + 1); }, delay);
             } else {
-                console.error('[Price Widget] Timeout waiting for script');
+                console.error('[Price Widget] Timeout waiting for script after ' + attempt + ' attempts');
+                document.getElementById(widgetId).innerHTML = '<div style="color:#FF4136;padding:10px">Widget timeout</div>';
             }
         }
         

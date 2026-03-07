@@ -89,27 +89,75 @@
     return idx;
   }
 
+  // Global flag to prevent multiple Chart.js loads
+  let chartJsLoading = false;
+  const chartJsLoadPromises = [];
+  
   function ensureChartJs(){
-    if (window.Chart) return Promise.resolve();
-    return new Promise((resolve, reject) => {
+    if (window.Chart) {
+      console.log('[price-widget] Chart.js already loaded');
+      return Promise.resolve();
+    }
+    
+    // Return existing promise if already loading
+    if (chartJsLoading && chartJsLoadPromises.length > 0) {
+      console.log('[price-widget] Chart.js load already in progress');
+      return chartJsLoadPromises[0];
+    }
+    
+    chartJsLoading = true;
+    const promise = new Promise((resolve, reject) => {
+      console.log('[price-widget] Loading Chart.js from CDN');
       const s = document.createElement('script');
       s.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
-      s.onload = () => resolve();
-      s.onerror = reject;
+      s.onload = () => {
+        console.log('[price-widget] Chart.js loaded successfully');
+        chartJsLoading = false;
+        resolve();
+      };
+      s.onerror = (e) => {
+        console.error('[price-widget] Failed to load Chart.js:', e);
+        chartJsLoading = false;
+        reject(e);
+      };
       document.head.appendChild(s);
     });
+    
+    chartJsLoadPromises.push(promise);
+    return promise;
   }
 
   async function render(containerId, payload, opts={}){
+    console.log('[price-widget] render() called for ' + containerId);
+    
     const container = document.getElementById(containerId);
-    if (!container) return;
-    let parsed = parseCreateBarChart(payload) || parseFromArray(payload);
-    if (!parsed) {
-      container.innerHTML = '<div style="color:#888">Keine Daten</div>';
+    if (!container) {
+      console.error('[price-widget] Container not found: ' + containerId);
       return;
     }
+    
+    let parsed = parseCreateBarChart(payload) || parseFromArray(payload);
+    if (!parsed) {
+      console.warn('[price-widget] No valid data in payload');
+      container.innerHTML = '<div style="color:#888;padding:10px">Keine Daten</div>';
+      return;
+    }
+    
+    console.log('[price-widget] Parsed data: ' + parsed.labels.length + ' labels, ' + parsed.datasets.length + ' datasets');
 
-    await ensureChartJs().catch(()=>{});
+    try {
+      await ensureChartJs();
+    } catch(e) {
+      console.error('[price-widget] Chart.js load failed:', e);
+      container.innerHTML = '<div style="color:#FF4136;padding:10px">Chart.js load failed</div>';
+      return;
+    }
+    
+    if (!window.Chart) {
+      console.error('[price-widget] Chart.js not available after load');
+      container.innerHTML = '<div style="color:#FF4136;padding:10px">Chart.js not available</div>';
+      return;
+    }
     
     // Check global registry for existing chart
     let existing = chartRegistry[containerId];
@@ -148,14 +196,21 @@
     const style = getTacticalStyle();
     
     // Create new chart
-    let canvas = container.querySelector('canvas');
-    if (!canvas) {
-      container.innerHTML = '';
-      canvas = document.createElement('canvas');
-      canvas.style.width = '100%';
-      canvas.style.height = '100%';
-      canvas.style.display = 'block';
-      container.appendChild(canvas);
+    console.log('[price-widget] Creating new chart');
+    
+    // Clear container and create fresh canvas
+    container.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+    container.appendChild(canvas);
+    
+    // Verify canvas is in DOM
+    if (!canvas.parentNode) {
+      console.error('[price-widget] Canvas not attached to DOM');
+      container.innerHTML = '<div style="color:#FF4136;padding:10px">Canvas creation failed</div>';
+      return;
     }
 
     const config = {
@@ -288,12 +343,27 @@
       }
     };
 
-    const ctx = canvas.getContext('2d');
-    const chart = new Chart(ctx, config);
-    chart._priceWidgetCanvas = canvas; // Store canvas reference
-    chartRegistry[containerId] = chart;
-    
-    return chart;
+    try {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        console.error('[price-widget] Failed to get 2d context');
+        container.innerHTML = '<div style="color:#FF4136;padding:10px">Canvas context failed</div>';
+        return;
+      }
+      
+      console.log('[price-widget] Creating Chart instance');
+      const chart = new Chart(ctx, config);
+      chart._priceWidgetCanvas = canvas;
+      chart._priceWidgetAllLabels = parsed.labels.slice(); // Store full labels
+      chartRegistry[containerId] = chart;
+      
+      console.log('[price-widget] Chart created successfully');
+      return chart;
+    } catch(e) {
+      console.error('[price-widget] Chart creation error:', e);
+      container.innerHTML = '<div style="color:#FF4136;padding:10px">Chart error: ' + e.message + '</div>';
+      return;
+    }
   }
 
   function drawNowLine(container, chart){
