@@ -92,13 +92,8 @@
       // Auf die letzte vergangene Viertelstunde abrunden (0, 15, 30, 45)
       var quarterMin = Math.floor(nowMin / 15) * 15;
 
-      var labelHour = nowHour.toString().padStart(2, '0') + ':00';
-      var idx = labels.indexOf(labelHour);
-
-      if (idx < 0) {
-        console.log('[Dashboard] Now-Line: current hour ' + labelHour + ' not in labels');
-        return;
-      }
+      // Ziel-Label wie es im Chart steht, z.B. "08:45"
+      var nowLabel = nowHour.toString().padStart(2, '0') + ':' + quarterMin.toString().padStart(2, '0');
 
       // Chart.js 2.x context ist chart.chart.ctx
       var ctx = chart.chart && chart.chart.ctx ? chart.chart.ctx : chart.ctx;
@@ -115,15 +110,29 @@
         return;
       }
 
-      // Fraktion innerhalb der Stunde: 0.0 (=:00), 0.25 (=:15), 0.5 (=:30), 0.75 (=:45)
-      var fraction = quarterMin / 60;
-      var xCurrent = xScale.getPixelForValue(undefined, idx);
-      var xNext    = idx + 1 < labels.length
-                       ? xScale.getPixelForValue(undefined, idx + 1)
-                       : xCurrent;
-      var x = xCurrent + (xNext - xCurrent) * fraction;
+      var x;
+      var idx = labels.indexOf(nowLabel);
 
-      var nowLabel = labelHour.replace(':00', ':' + quarterMin.toString().padStart(2, '0'));
+      if (idx >= 0) {
+        // Direkter Treffer (z.B. 15-Minuten-Chart): Linie auf Balkenmitte
+        x = xScale.getPixelForValue(undefined, idx);
+      } else {
+        // Fallback für Stunden-Charts: Stundenlabel suchen und interpolieren
+        var hourLabel = nowHour.toString().padStart(2, '0') + ':00';
+        idx = labels.indexOf(hourLabel);
+        if (idx < 0) {
+          console.log('[Dashboard] Now-Line: label ' + nowLabel + ' not in labels');
+          return;
+        }
+        // Nächstes Stunden-Label finden (nicht idx+1, da Label-Abstände variieren können)
+        var nextHourLabel = (nowHour + 1).toString().padStart(2, '0') + ':00';
+        var idxNext = labels.indexOf(nextHourLabel);
+        if (idxNext < 0) idxNext = idx + 1; // letzter Fallback
+        var fraction = quarterMin / 60;
+        var xCurrent = xScale.getPixelForValue(undefined, idx);
+        var xNext    = idxNext < labels.length ? xScale.getPixelForValue(undefined, idxNext) : xCurrent;
+        x = xCurrent + (xNext - xCurrent) * fraction;
+      }
       ctx.save();
       ctx.strokeStyle = '#00d4ff';
       ctx.lineWidth = 2;
@@ -190,16 +199,31 @@
     registerPlugin();
   }
   
-  // Bei jeder Minute alle Charts updaten
-  setInterval(function() {
-    if (typeof Chart !== 'undefined' && Chart.instances) {
-      Object.keys(Chart.instances).forEach(function(key) {
-        var chart = Chart.instances[key];
-        if (chart && chart.update) {
-          chart.update();
+  // Exakt zur nächsten Viertelstunde (:00, :15, :30, :45) alle Charts updaten
+  function scheduleNowLineUpdate() {
+    var now = new Date();
+    var msUntilNext = (15 - (now.getMinutes() % 15)) * 60000
+                     - now.getSeconds() * 1000
+                     - now.getMilliseconds();
+    setTimeout(function() {
+      try {
+        if (typeof Chart !== 'undefined' && Chart.instances) {
+          Object.keys(Chart.instances).forEach(function(key) {
+            try {
+              var chart = Chart.instances[key];
+              if (chart && chart.update) {
+                chart.update(0); // 0ms = sofortiger synchroner Redraw
+              }
+            } catch (e) {
+              console.warn('[Dashboard] Now-Line update error:', e);
+            }
+          });
         }
-      });
-    }
-  }, 60000); // Jede Minute
+      } finally {
+        scheduleNowLineUpdate(); // Timer-Kette immer fortsetzen
+      }
+    }, msUntilNext || 1);
+  }
+  scheduleNowLineUpdate();
 })();
 </script>
