@@ -1,0 +1,205 @@
+<style>
+  /* ROCINANTE - Minimal CSS: nur Font, Textfarbe, Hintergrundfarbe */
+
+  body {
+    background-color: #05070a !important;
+  }
+
+  md-toolbar,
+  .md-toolbar-tools {
+    background-color: #0f172a !important;
+    color: #00d4ff !important;
+  }
+
+  md-sidenav {
+    background-color: #0f172a !important;
+  }
+
+  md-card {
+    background-color: #0f172a !important;
+    border: 1px solid #00d4ff !important;
+  }
+
+  .nr-dashboard-group,
+  .nr-dashboard-group>md-card {
+    background-color: #0f172a !important;
+  }
+
+  ui-card-panel,
+  .nr-dashboard-cardpanel,
+  .nr-dashboard-cardcontainer {
+    background-color: #0f172a !important;
+  }
+
+  /* Schrift */
+  body,
+  md-card,
+  md-card * {
+    font-family: "Courier New", Courier, monospace !important;
+    color: #00d4ff !important;
+    font-size: 12px !important;
+  }
+
+  md-card-title,
+  md-card-title span {
+    color: #00d4ff !important;
+    text-transform: uppercase !important;
+    letter-spacing: 2px !important;
+    font-size: 11px !important;
+  }
+
+  /* Icon-Fonts zuruecksetzen (werden durch md-card * ueberschrieben) */
+  md-icon,
+  .material-icons {
+    font-family: "Material Icons" !important;
+    font-size: 24px !important;
+    color: #c8e6f9 !important;
+  }
+
+  .fa,
+  [class^="fa-"],
+  [class*=" fa-"] {
+    font-family: "FontAwesome" !important;
+  }
+
+  /* Gauge SVG-Text */
+  svg text {
+    fill: #00d4ff !important;
+    font-family: "Courier New", Courier, monospace !important;
+    font-size: 12px !important;
+  }
+</style>
+<script>
+  (function() {
+  // Plugin für Now-Line in Dashboard Charts (Chart.js 2.x)
+  var nowLinePlugin = {
+    id: 'dashboardNowLine',
+    afterDatasetsDraw: function(chart) {
+      // Nur für Bar-Charts mit Zeitlabels (HH:MM Format)
+      if (chart.config.type !== 'bar') return;
+      
+      var labels = chart.data.labels || [];
+      if (labels.length === 0) return;
+      
+      // Prüfe ob Labels im Zeit-Format sind (HH:MM)
+      if (!/^\d{1,2}:\d{2}$/.test(labels[0])) return;
+      
+      // Finde aktuelle Stunde und Viertelstunden-Position
+      var now = new Date();
+      var nowHour = now.getHours();
+      var nowMin  = now.getMinutes();
+
+      // Auf die letzte vergangene Viertelstunde abrunden (0, 15, 30, 45)
+      var quarterMin = Math.floor(nowMin / 15) * 15;
+
+      var labelHour = nowHour.toString().padStart(2, '0') + ':00';
+      var idx = labels.indexOf(labelHour);
+
+      if (idx < 0) {
+        console.log('[Dashboard] Now-Line: current hour ' + labelHour + ' not in labels');
+        return;
+      }
+
+      // Chart.js 2.x context ist chart.chart.ctx
+      var ctx = chart.chart && chart.chart.ctx ? chart.chart.ctx : chart.ctx;
+      var xScale = chart.scales['x-axis-0'];
+      var yScale = chart.scales['y-axis-0'];
+
+      if (!ctx) {
+        console.warn('[Dashboard] Now-Line: ctx not found');
+        return;
+      }
+
+      if (!xScale || !yScale) {
+        console.warn('[Dashboard] Now-Line: scales not found');
+        return;
+      }
+
+      // Fraktion innerhalb der Stunde: 0.0 (=:00), 0.25 (=:15), 0.5 (=:30), 0.75 (=:45)
+      var fraction = quarterMin / 60;
+      var xCurrent = xScale.getPixelForValue(undefined, idx);
+      var xNext    = idx + 1 < labels.length
+                       ? xScale.getPixelForValue(undefined, idx + 1)
+                       : xCurrent;
+      var x = xCurrent + (xNext - xCurrent) * fraction;
+
+      var nowLabel = labelHour.replace(':00', ':' + quarterMin.toString().padStart(2, '0'));
+      ctx.save();
+      ctx.strokeStyle = '#00d4ff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, yScale.top);
+      ctx.lineTo(x, yScale.bottom);
+      ctx.stroke();
+      ctx.restore();
+      console.log('[Dashboard] Now-Line drawn at ' + nowLabel + ' (index ' + idx + ' +' + fraction + ')');
+    }
+  };
+  
+  // Chart.js 2.x Plugin registrieren
+  function registerPlugin() {
+    if (typeof Chart !== 'undefined') {
+      if (Chart.plugins) {
+        // ERST Chart.js 2.x Default-Styles setzen
+        Chart.defaults.global.defaultFontFamily = '"Courier New", Courier, monospace';
+        Chart.defaults.global.defaultFontSize = 12;
+        Chart.defaults.global.defaultFontColor = '#00d4ff';
+        
+        // Gridlines
+        if (Chart.defaults.scale && Chart.defaults.scale.gridLines) {
+          Chart.defaults.scale.gridLines.color = 'rgba(0, 212, 255, 0.2)';
+          Chart.defaults.scale.gridLines.zeroLineColor = 'rgba(0, 212, 255, 0.4)';
+        }
+        
+        console.log('[Dashboard] Chart.js defaults configured');
+
+        // Alte Instanzen mit gleicher ID entfernen (verhindert Doppel-Registrierung beim Reload)
+        if (Chart.plugins._plugins) {
+          Chart.plugins._plugins = Chart.plugins._plugins.filter(function(p) {
+            return p.id !== 'dashboardNowLine';
+          });
+        }
+
+        // DANN Plugin registrieren
+        Chart.plugins.register(nowLinePlugin);
+        console.log('[Dashboard] Now-Line plugin registered (Chart.js ' + Chart.version + ')');
+        
+        // Alle existierenden Charts neu rendern mit neuen Defaults
+        if (Chart.instances) {
+          Object.keys(Chart.instances).forEach(function(key) {
+            var chart = Chart.instances[key];
+            if (chart && chart.update) {
+              chart.update();
+            }
+          });
+          console.log('[Dashboard] Updated ' + Object.keys(Chart.instances).length + ' existing charts');
+        }
+      } else {
+        console.error('[Dashboard] Chart.plugins not available');
+      }
+    } else {
+      setTimeout(registerPlugin, 100);
+    }
+  }
+  
+  // Warte bis Chart.js geladen ist
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', registerPlugin);
+  } else {
+    registerPlugin();
+  }
+  
+  // Bei jeder Minute alle Charts updaten
+  setInterval(function() {
+    if (typeof Chart !== 'undefined' && Chart.instances) {
+      Object.keys(Chart.instances).forEach(function(key) {
+        var chart = Chart.instances[key];
+        if (chart && chart.update) {
+          chart.update();
+        }
+      });
+    }
+  }, 60000); // Jede Minute
+})();
+</script>
