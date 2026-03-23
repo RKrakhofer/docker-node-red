@@ -1,0 +1,271 @@
+<style>
+  .sunclock-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+    height: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px;
+  }
+  .sunclock-svg {
+    max-width: 100%;
+    max-height: calc(100% - 20px);
+  }
+  .sunclock-times {
+    font-size: 12px;
+    font-family: 'Share Tech Mono', 'Consolas', 'Courier New', monospace;
+    margin-top: 2px;
+    text-align: center;
+    line-height: 1.1;
+    flex-shrink: 0;
+  }
+</style>
+
+<div class="sunclock-wrap">
+  <svg class="sunclock-svg" style="display:block"></svg>
+  <div class="sunclock-times"></div>
+</div>
+
+<script>
+(function() {
+  // === Konfiguration ===
+  var LAT = 48.038234;
+  var LON = 16.7792948;
+  var SIZE = 160;
+  var THEME = 'dark';  // 'light' oder 'dark'
+  var UPDATE_MS = 240000; // 4 Minuten
+
+  // === Minimale SunCalc-Implementierung ===
+  var RAD = Math.PI / 180;
+  var DAY_MS = 86400000;
+  var J1970 = 2440588;
+  var J2000 = 2451545;
+  var e = RAD * 23.4397;
+
+  function toJulian(d) { return d.valueOf() / DAY_MS - 0.5 + J1970; }
+  function fromJulian(j) { return new Date((j + 0.5 - J1970) * DAY_MS); }
+  function toDays(d) { return toJulian(d) - J2000; }
+
+  function solarMeanAnomaly(d) { return RAD * (357.5291 + 0.98560028 * d); }
+  function eclipticLongitude(M) {
+    var C = RAD * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2*M) + 0.0003 * Math.sin(3*M));
+    var P = RAD * 102.9372;
+    return M + C + P + Math.PI;
+  }
+  function sunCoords(d) {
+    var M = solarMeanAnomaly(d);
+    var L = eclipticLongitude(M);
+    return { dec: Math.asin(Math.sin(0) * Math.cos(e) + Math.cos(0) * Math.sin(e) * Math.sin(L)),
+             ra: Math.atan2(Math.sin(L) * Math.cos(e), Math.cos(L)) };
+    // Vereinfacht: Deklination direkt
+  }
+  function sunDeclination(d) {
+    var M = solarMeanAnomaly(d);
+    var L = eclipticLongitude(M);
+    return Math.asin(Math.sin(e) * Math.sin(L));
+  }
+  function siderealTime(d, lw) { return RAD * (280.16 + 360.9856235 * d) - lw; }
+
+  function hourAngle(h, phi, dec) {
+    var cosH = (Math.sin(h) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec));
+    return Math.acos(Math.max(-1, Math.min(1, cosH)));
+  }
+
+  function julianCycle(d, lw) { return Math.round(d - 0.0009 - lw / (2 * Math.PI)); }
+
+  function getSunTimes(date, lat, lon) {
+    var lw = RAD * -lon;
+    var phi = RAD * lat;
+    var d = toDays(date);
+    var n = julianCycle(d, lw);
+    var ds = 0.0009 + (0 + lw) / (2 * Math.PI) + n;
+    var M = solarMeanAnomaly(ds);
+    var L = eclipticLongitude(M);
+    var dec = Math.asin(Math.sin(e) * Math.sin(L));
+    var Jnoon = J2000 + ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+    var h0 = RAD * -0.833;
+    var w = hourAngle(h0, phi, dec);
+    var Jset = J2000 + 0.0009 + (w + lw) / (2 * Math.PI) + n + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+    var Jrise = Jnoon - (Jset - Jnoon);
+    return { sunrise: fromJulian(Jrise), sunset: fromJulian(Jset) };
+  }
+
+  // Mondphase (vereinfacht über synodischen Monat)
+  function getMoonPhase(date) {
+    // Referenz: bekannter Neumond 6. Jan 2000 18:14 UTC
+    var ref = new Date(Date.UTC(2000, 0, 6, 18, 14, 0));
+    var synodic = 29.53058867;
+    var days = (date.getTime() - ref.getTime()) / DAY_MS;
+    var phase = ((days % synodic) + synodic) % synodic / synodic; // 0..1
+    // Beleuchtungsanteil: 0 bei Neumond, 1 bei Vollmond
+    var fraction = (1 - Math.cos(2 * Math.PI * phase)) / 2;
+    return { phase: phase, fraction: fraction };
+  }
+
+  // === Rendering ===
+  var all = document.querySelectorAll('.sunclock-wrap');
+  var container = all[all.length - 1];
+  var svgEl = container.querySelector('.sunclock-svg');
+  var timesEl = container.querySelector('.sunclock-times');
+
+  // Pseudo-Zufallssterne (deterministisch, basierend auf Tag)
+  var starSeeds = [];
+  for (var i = 0; i < 5; i++) {
+    starSeeds.push({ angleFrac: [0.12, 0.35, 0.58, 0.77, 0.93][i], rFrac: [0.72, 0.85, 0.78, 0.88, 0.75][i] });
+  }
+
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtTime(d) { return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+
+  function timeToAngle(date) {
+    var h = date.getHours() + date.getMinutes() / 60;
+    return ((h / 24) * 360 + 90) * Math.PI / 180;
+  }
+
+  function render() {
+    var now = new Date();
+    var center = SIZE / 2;
+    var radius = SIZE * 0.38;
+    var bg = THEME === 'dark' ? '#23272a' : '#eee';
+    var fg = THEME === 'dark' ? '#eee' : '#222';
+    var tickColor = THEME === 'dark' ? '#bbb' : '#888';
+    var dayColor = THEME === 'dark' ? '#e6b800' : '#ffe066';
+
+    var sun = getSunTimes(now, LAT, LON);
+    var sunriseAngle = timeToAngle(sun.sunrise);
+    var sunsetAngle = timeToAngle(sun.sunset);
+    var timeAngle = timeToAngle(now);
+    var moon = getMoonPhase(now);
+
+    // Ist es Tag?
+    var isDay = (function() {
+      var a = timeAngle, s = sunriseAngle, e = sunsetAngle;
+      if (e < s) e += 2 * Math.PI;
+      if (a < s) a += 2 * Math.PI;
+      return a >= s && a <= e;
+    })();
+
+    // Zeiger-Farbe: Kontrast zum aktuellen Sektor
+    var nightColor = THEME === 'dark' ? '#23272a' : '#b0b0b0';
+    var pointerColor = isDay ? nightColor : dayColor;
+
+    // SVG aufbauen – viewBox passgenau, SVG skaliert responsiv
+    var svg = '';
+    var margin = 2;
+    var vbMin = center - radius - 10 - margin;
+    var vbSize = (radius + 10 + margin) * 2;
+    svgEl.removeAttribute('width');
+    svgEl.removeAttribute('height');
+    svgEl.setAttribute('viewBox', vbMin + ' ' + vbMin + ' ' + vbSize + ' ' + vbSize);
+
+    // Rahmen
+    svg += '<circle cx="'+center+'" cy="'+center+'" r="'+(radius+10)+'" fill="'+bg+'" stroke="#888" stroke-width="1.2"/>';
+
+    // Nachtsektor
+    var ns = sunsetAngle, ne = sunriseAngle;
+    if (ne < ns) ne += 2 * Math.PI;
+    var nLarge = (ne - ns) > Math.PI ? 1 : 0;
+    var nsx = center + radius * Math.cos(ns);
+    var nsy = center + radius * Math.sin(ns);
+    var nex = center + radius * Math.cos(ne);
+    var ney = center + radius * Math.sin(ne);
+    svg += '<path d="M '+center+' '+center+' L '+nsx+' '+nsy+' A '+radius+' '+radius+' 0 '+nLarge+' 1 '+nex+' '+ney+' Z" fill="'+(THEME==='dark'?'#23272a':'#b0b0b0')+'" opacity="0.7"/>';
+
+    // Mond im Mittelpunkt des Nachtsektors
+    var moonAngle = ns + (ne - ns) / 2;
+    var moonR = radius * 0.55;
+    var moonX = center + moonR * Math.cos(moonAngle);
+    var moonY = center + moonR * Math.sin(moonAngle);
+    var moonColor = THEME === 'dark' ? '#ffe066' : '#fff';
+    var moonOpacity = THEME === 'dark' ? '1' : '0.6';
+    var mr = 6;
+
+    if (moon.fraction >= 0.98) {
+      // Vollmond
+      svg += '<circle cx="'+moonX+'" cy="'+moonY+'" r="'+mr+'" fill="'+moonColor+'" opacity="'+moonOpacity+'"/>';
+    } else if (moon.fraction > 0.02) {
+      // Sichel
+      var maskId = 'moon-mask-sc';
+      var offset = -(2 * moon.fraction - 1) * mr;
+      svg += '<defs><mask id="'+maskId+'">';
+      svg += '<rect x="'+(moonX-mr)+'" y="'+(moonY-mr)+'" width="'+(2*mr)+'" height="'+(2*mr)+'" fill="white"/>';
+      svg += '<circle cx="'+(moonX+offset)+'" cy="'+moonY+'" r="'+mr+'" fill="black"/>';
+      svg += '</mask></defs>';
+      svg += '<circle cx="'+moonX+'" cy="'+moonY+'" r="'+mr+'" fill="'+moonColor+'" mask="url(#'+maskId+')" opacity="'+moonOpacity+'"/>';
+    }
+    // Neumond: nichts zeichnen
+
+    // Sterne im Nachtsektor
+    for (var i = 0; i < starSeeds.length; i++) {
+      var sa = ns + starSeeds[i].angleFrac * (ne - ns);
+      var sr = radius * starSeeds[i].rFrac;
+      var sx = center + sr * Math.cos(sa);
+      var sy = center + sr * Math.sin(sa);
+      svg += '<circle cx="'+sx+'" cy="'+sy+'" r="1.2" fill="#fff" opacity="0.8"/>';
+    }
+
+    // Tag-Sektor
+    var dLarge = ((sunsetAngle - sunriseAngle) % (2*Math.PI)) > Math.PI ? 1 : 0;
+    var dsx = center + radius * Math.cos(sunriseAngle);
+    var dsy = center + radius * Math.sin(sunriseAngle);
+    var dex = center + radius * Math.cos(sunsetAngle);
+    var dey = center + radius * Math.sin(sunsetAngle);
+    svg += '<path d="M '+center+' '+center+' L '+dsx+' '+dsy+' A '+radius+' '+radius+' 0 '+dLarge+' 1 '+dex+' '+dey+' Z" fill="'+dayColor+'" opacity="0.85"/>';
+
+    // Ticks (24 Stunden)
+    for (var h = 0; h < 24; h++) {
+      var a = ((h / 24) * 360 + 90) * Math.PI / 180;
+      var x1 = center + (radius - 4) * Math.cos(a);
+      var y1 = center + (radius - 4) * Math.sin(a);
+      var x2 = center + (radius + 8) * Math.cos(a);
+      var y2 = center + (radius + 8) * Math.sin(a);
+      var sw = h % 6 === 0 ? 2 : 1;
+      svg += '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+tickColor+'" stroke-width="'+sw+'"/>';
+    }
+
+    // Stundenbeschriftungen (0, 6, 12, 18)
+    var labels = [0, 6, 12, 18];
+    for (var li = 0; li < labels.length; li++) {
+      var lh = labels[li];
+      var la = ((lh / 24) * 360 + 90) * Math.PI / 180;
+      var lx = center + (radius - 12) * Math.cos(la);
+      var ly = center + (radius - 12) * Math.sin(la) + 4;
+      svg += '<text x="'+lx+'" y="'+ly+'" text-anchor="middle" font-size="10" fill="'+fg+'" font-weight="normal">'+lh+'</text>';
+    }
+
+    // Zeiger
+    var pLen = radius * 0.95;
+    var px = center + pLen * Math.cos(timeAngle);
+    var py = center + pLen * Math.sin(timeAngle);
+    svg += '<line x1="'+center+'" y1="'+center+'" x2="'+px+'" y2="'+py+'" stroke="'+pointerColor+'" stroke-width="4" stroke-linecap="round"/>';
+
+    // Mittelpunkt
+    svg += '<circle cx="'+center+'" cy="'+center+'" r="6" fill="'+pointerColor+'" stroke="'+fg+'" stroke-width="1.5"/>';
+
+    svgEl.innerHTML = svg;
+
+    // Zeiten unter der Uhr
+    var color = THEME === 'dark' ? '#eee' : '#222';
+    timesEl.style.color = color;
+    timesEl.textContent = fmtTime(sun.sunrise) + ' – ' + fmtTime(sun.sunset);
+  }
+
+  // Initial rendern + alle 4 Minuten
+  render();
+  setInterval(render, UPDATE_MS);
+
+  // Optional: Theme/Koordinaten per msg.payload überschreiben
+  scope.$watch('msg', function(msg) {
+    if (!msg || !msg.payload) return;
+    var d = msg.payload;
+    if (d.lat != null) LAT = d.lat;
+    if (d.lon != null) LON = d.lon;
+    if (d.theme) THEME = d.theme;
+    if (d.size) SIZE = d.size;
+    render();
+  });
+})();
+</script>

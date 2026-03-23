@@ -1,0 +1,293 @@
+<style>
+  .pv-widget {
+    font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+    border-radius: 12px;
+    padding: 16px;
+    max-width: 380px;
+    margin: 0 auto;
+    color: #333;
+    position: relative;
+  }
+  .pv-widget .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+  .pv-widget .title { font-size: 15px; font-weight: 600; }
+  .pv-widget .live-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: #2ecc71;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+    animation: pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .pv-widget .live-label { font-size: 12px; color: #2ecc71; }
+  .pv-widget .temp {
+    font-size: 22px; font-weight: 300; color: #555;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .pv-widget .temp-unit { font-size: 14px; }
+
+  /* SVG Container */
+  .pv-widget .flow-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* Labels */
+  .pv-widget .node-label {
+    font-size: 13px;
+    font-weight: 600;
+    fill: #444;
+    text-anchor: middle;
+  }
+  .pv-widget .node-unit {
+    font-size: 11px;
+    font-weight: 400;
+    fill: #777;
+    text-anchor: middle;
+  }
+  .pv-widget .node-sub {
+    font-size: 10px;
+    fill: #999;
+    text-anchor: middle;
+  }
+
+  /* Arrow animation */
+  .flow-arrow { fill: none; stroke-width: 3; stroke-linecap: round; }
+  .flow-arrow.active { stroke-dasharray: 8 6; animation: flow-dash 1s linear infinite; }
+  .flow-arrow.active.reverse { animation-direction: reverse; }
+  @keyframes flow-dash { to { stroke-dashoffset: -14; } }
+  .flow-arrow.inactive { stroke: #ddd; stroke-dasharray: none; }
+
+  /* Icons */
+  .icon-pv { fill: #f39c12; }
+  .icon-inverter { fill: #3498db; }
+  .icon-house { fill: #95a5a6; }
+  .icon-grid { fill: #7f8c8d; }
+  .icon-battery { fill: #2ecc71; }
+
+  /* SOE bar */
+  .soe-bg { fill: #e8e8e8; rx: 2; }
+  .soe-fill { rx: 2; transition: width 0.5s; }
+</style>
+
+<div class="pv-widget">
+  <div class="header">
+    <div>
+      <div class="title">Leistungsfluss</div>
+      <div><span class="live-dot"></span><span class="live-label">Live</span></div>
+    </div>
+    <div class="temp">
+      <span class="pv-temp">--</span><span class="temp-unit">°C</span>
+    </div>
+  </div>
+
+  <svg class="flow-svg" viewBox="0 0 340 320" xmlns="http://www.w3.org/2000/svg">
+    <!-- ============ ICONS ============ -->
+
+    <!-- PV Panel (top center) -->
+    <g transform="translate(170,32)">
+      <rect x="-30" y="-22" width="60" height="44" rx="4" fill="#1a237e" opacity="0.85"/>
+      <line x1="-30" y1="-4" x2="30" y2="-4" stroke="#4fc3f7" stroke-width="1"/>
+      <line x1="-30" y1="12" x2="30" y2="12" stroke="#4fc3f7" stroke-width="1"/>
+      <line x1="-10" y1="-22" x2="-10" y2="22" stroke="#4fc3f7" stroke-width="1"/>
+      <line x1="10" y1="-22" x2="10" y2="22" stroke="#4fc3f7" stroke-width="1"/>
+      <text y="40" class="node-label pv-val">-- kW</text>
+    </g>
+
+    <!-- Inverter (center) -->
+    <g transform="translate(170,150)">
+      <rect x="-20" y="-20" width="40" height="40" rx="4" fill="#fff" stroke="#3498db" stroke-width="2.5"/>
+      <rect x="-8" y="-8" width="16" height="16" rx="2" fill="#e74c3c"/>
+      <text y="35" class="node-sub">Inverter</text>
+    </g>
+
+    <!-- House (left) -->
+    <g transform="translate(46,150)">
+      <path d="M-20,5 L0,-18 L20,5 L20,20 L-20,20 Z" fill="none" stroke="#7f8c8d" stroke-width="2.5" stroke-linejoin="round"/>
+      <rect x="-6" y="5" width="12" height="15" fill="none" stroke="#7f8c8d" stroke-width="2"/>
+      <text y="40" class="node-label house-val">-- kW</text>
+    </g>
+
+    <!-- Grid (right) -->
+    <g transform="translate(294,150)">
+      <line x1="0" y1="-22" x2="0" y2="18" stroke="#7f8c8d" stroke-width="3"/>
+      <line x1="-14" y1="-10" x2="14" y2="-10" stroke="#7f8c8d" stroke-width="2.5"/>
+      <line x1="-8" y1="-2" x2="8" y2="-2" stroke="#7f8c8d" stroke-width="2"/>
+      <line x1="-12" y1="-22" x2="0" y2="-10" stroke="#7f8c8d" stroke-width="2.5"/>
+      <line x1="12" y1="-22" x2="0" y2="-10" stroke="#7f8c8d" stroke-width="2.5"/>
+      <text y="38" class="node-label grid-val">-- kW</text>
+      <text y="52" class="node-sub grid-dir"></text>
+    </g>
+
+    <!-- Battery (bottom center) -->
+    <g transform="translate(170,270)">
+      <rect x="-16" y="-20" width="32" height="36" rx="4" fill="none" stroke="#2ecc71" stroke-width="2.5"/>
+      <rect x="-6" y="-24" width="12" height="6" rx="1" fill="#2ecc71"/>
+      <!-- SOE fill -->
+      <rect class="soe-bg" x="-12" y="-16" width="24" height="28"/>
+      <rect class="soe-fill bat-soe-fill" x="-12" y="-16" width="24" height="28" fill="#2ecc71" opacity="0.5"/>
+      <text y="-30" class="node-sub bat-soe">--%</text>
+      <text y="32" class="node-label bat-val">-- kW</text>
+    </g>
+
+    <!-- ============ FLOW ARROWS ============ -->
+
+    <!-- PV → Inverter (down) -->
+    <path class="flow-arrow arrow-pv"
+          d="M170,60 L170,125" stroke="#2ecc71"/>
+    <polygon class="arrow-pv-head" points="163,120 170,130 177,120" fill="#2ecc71"/>
+
+    <!-- Inverter → House (left) -->
+    <path class="flow-arrow arrow-house"
+          d="M145,150 L80,150" stroke="#2ecc71"/>
+    <polygon class="arrow-house-head" points="85,143 75,150 85,157" fill="#2ecc71"/>
+
+    <!-- Inverter → Grid (right) -->
+    <path class="flow-arrow arrow-grid"
+          d="M195,150 L260,150" stroke="#2ecc71"/>
+    <polygon class="arrow-grid-head" points="255,143 265,150 255,157" fill="#2ecc71"/>
+
+    <!-- Inverter → Battery (down) -->
+    <path class="flow-arrow arrow-bat"
+          d="M170,175 L170,240" stroke="#2ecc71"/>
+    <polygon class="arrow-bat-head" points="163,235 170,245 177,235" fill="#2ecc71"/>
+
+  </svg>
+</div>
+
+<script>
+(function() {
+  // Container finden: currentScript zeigt auf dieses <script>, Vorgänger ist das Widget-div
+  var container = document.currentScript && document.currentScript.previousElementSibling;
+  if (!container || !container.classList.contains('pv-widget')) {
+    var all = document.querySelectorAll('.pv-widget');
+    container = all[all.length - 1];
+  }
+  console.log('[PV-Widget] container:', container ? 'FOUND' : 'NOT FOUND');
+
+  function $(sel) { return container ? container.querySelector(sel) : null; }
+
+  function fmt(w) {
+    var abs = Math.abs(w);
+    if (abs >= 1000) return (abs / 1000).toFixed(2) + ' kW';
+    return abs.toFixed(0) + ' W';
+  }
+
+  function setArrow(name, active, reverse) {
+    var path = $('.arrow-' + name);
+    var head = $('.arrow-' + name + '-head');
+    if (!path || !head) return;
+
+    path.classList.remove('active', 'reverse', 'inactive');
+    if (active) {
+      path.classList.add('active');
+      // Kein 'reverse' nötig – die Dash-Richtung ergibt sich aus dem Pfad (d-Attribut),
+      // der bei reverse bereits umgedreht wird.
+      path.style.stroke = '#2ecc71';
+      head.style.fill = '#2ecc71';
+      head.style.display = '';
+
+      if (name === 'grid') {
+        if (reverse) {
+          head.setAttribute('points', '200,143 190,150 200,157');
+          path.setAttribute('d', 'M260,150 L195,150');
+        } else {
+          head.setAttribute('points', '255,143 265,150 255,157');
+          path.setAttribute('d', 'M195,150 L260,150');
+        }
+      }
+      if (name === 'bat') {
+        if (reverse) {
+          head.setAttribute('points', '163,180 170,170 177,180');
+          path.setAttribute('d', 'M170,240 L170,175');
+        } else {
+          head.setAttribute('points', '163,235 170,245 177,235');
+          path.setAttribute('d', 'M170,175 L170,240');
+        }
+      }
+    } else {
+      path.classList.add('inactive');
+      path.style.stroke = '#ddd';
+      head.style.fill = '#ddd';
+      head.style.display = 'none';
+    }
+  }
+
+  function setSOE(pct) {
+    var el = $('.bat-soe-fill');
+    if (!el) return;
+    var h = 28 * (pct / 100);
+    el.setAttribute('y', -16 + (28 - h));
+    el.setAttribute('height', h);
+    if (pct > 50) el.setAttribute('fill', '#2ecc71');
+    else if (pct > 20) el.setAttribute('fill', '#f39c12');
+    else el.setAttribute('fill', '#e74c3c');
+  }
+
+  scope.$watch('msg', function(msg) {
+      if (!msg || !msg.payload) return;
+      var d = msg.payload;
+      console.log('[PV-Widget] payload:', JSON.stringify(d));
+
+      var pv   = d.pv   || 0;
+      var grid = d.grid || 0;
+      var house = d.house || 0;
+      var bat  = d.battery || 0;
+      var soe  = d.soe != null ? d.soe : null;
+      var temp = d.temperature != null ? d.temperature : null;
+
+      var pvEl = $('.pv-val');
+      if (pvEl) pvEl.textContent = fmt(pv);
+
+      var hEl = $('.house-val');
+      if (hEl) hEl.textContent = fmt(house);
+
+      var gEl = $('.grid-val');
+      if (gEl) gEl.textContent = fmt(Math.abs(grid));
+
+      var gdEl = $('.grid-dir');
+      if (gdEl) {
+        if (grid > 10) gdEl.textContent = 'Einspeisung';
+        else if (grid < -10) gdEl.textContent = 'Bezug';
+        else gdEl.textContent = '';
+      }
+
+      var bEl = $('.bat-val');
+      if (bEl) bEl.textContent = fmt(bat);
+
+      var bsEl = $('.bat-soe');
+      if (bsEl) bsEl.textContent = soe != null ? soe.toFixed(0) + '%' : '';
+
+      var tEl = $('.pv-temp');
+      if (tEl) tEl.textContent = temp != null ? temp.toFixed(0) : '--';
+
+      var THRESH = 10;
+      setArrow('pv', pv > THRESH, false);
+      setArrow('house', house > THRESH, false);
+
+      if (Math.abs(grid) > THRESH) {
+        setArrow('grid', true, grid < 0);
+      } else {
+        setArrow('grid', false, false);
+      }
+
+      if (Math.abs(bat) > THRESH) {
+        setArrow('bat', true, bat < 0);
+      } else {
+        setArrow('bat', false, false);
+      }
+
+      if (soe != null) setSOE(soe);
+  });
+})();
+</script>

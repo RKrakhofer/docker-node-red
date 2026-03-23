@@ -1,0 +1,47 @@
+@startuml
+skinparam backgroundColor #0f172a
+skinparam defaultFontColor #00d4ff
+skinparam defaultFontName "Courier New"
+skinparam defaultFontSize 12
+skinparam ArrowColor #00d4ff
+skinparam ArrowFontColor #00d4ff
+skinparam ArrowFontSize 11
+skinparam noteFontColor #00d4ff
+skinparam noteBackgroundColor #1e293b
+skinparam noteBorderColor #00d4ff
+skinparam actorBorderColor #00d4ff
+skinparam actorBackgroundColor #1e293b
+skinparam participantBorderColor #00d4ff
+skinparam participantBackgroundColor #1e293b
+skinparam participantFontColor #00d4ff
+
+title **Strombezug** (Spotty → Ich)\n1 kWh bei EPEX = 5,00 ct/kWh netto\nAufschlag = 1,49 ct/kWh netto
+
+actor "Ich\n(PV-Betreiber)" as ich
+participant "Spotty\n(Lieferant)" as spotty
+participant "Finanzamt" as finanz
+
+== Stromlieferung ==
+
+spotty -> ich : **1 kWh Strom**
+
+== Bezahlung ==
+
+ich -> spotty : EPEX brutto: **6,00 ct**\n(5,00 netto + 1,00 USt)
+ich -> spotty : Aufschlag brutto: **1,79 ct**\n(1,49 netto + 0,30 USt)
+
+note right of ich
+  **Ich zahle gesamt: 7,79 ct**
+  davon 6,49 netto + 1,30 USt
+end note
+
+== USt-Abfuhr ==
+
+spotty -> finanz : **1,30 ct USt**\n(1,00 + 0,30)
+
+note right of spotty
+  Spotty führt die gesamte
+  USt ans Finanzamt ab
+end note
+
+@enduml

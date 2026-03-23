@@ -1,0 +1,125 @@
+@startuml solaredge_energy_flow
+!theme plain
+skinparam backgroundColor white
+skinparam defaultFontSize 13
+skinparam ArrowThickness 2
+skinparam RoundCorner 10
+skinparam shadowing false
+skinparam padding 8
+skinparam nodesep 80
+skinparam ranksep 60
+hide stereotype
+
+title SolarEdge Modbus – Energieflüsse & Feldnamen\n(DC-Bus = PV + Batterie, DC-gekoppelt)
+
+skinparam rectangle {
+    BackgroundColor<<pv>> #FFF3B0
+    BorderColor<<pv>> #D4A017
+    BackgroundColor<<inv>> #D0E8FF
+    BorderColor<<inv>> #336699
+    BackgroundColor<<bat>> #D5F5E3
+    BorderColor<<bat>> #1E8449
+    BackgroundColor<<house>> #FAD7A0
+    BorderColor<<house>> #CA6F1E
+    BackgroundColor<<grid>> #F2D7D5
+    BorderColor<<grid>> #C0392B
+}
+
+skinparam card {
+    BackgroundColor<<meter>> #F0F0F0
+    BorderColor<<meter>> #999999
+}
+
+' Layout: PV oben → DC-Bus → Batterie (links) + Inverter (unten) → Haus → Netz
+
+rectangle "**PV-Module**\n(DC)" as PV <<pv>>
+
+rectangle "**Batterie**\n(DC-gekoppelt, ~5 kW)" as BAT <<bat>>
+rectangle "**DC-Bus**" as DCBUS <<inv>>
+rectangle "**Inverter**\n(SolarEdge)\n<size:10>DC → AC</size>" as INV <<inv>>
+rectangle "**Haus**\n(Eigenverbrauch)" as HOUSE <<house>>
+
+rectangle "**Netz**\n(EVN Grid)" as GRID <<grid>>
+
+' === Messpunkte (physische Sensoren) ===
+card "**DC-Sensor**\n<size:10>Inverter-intern</size>" as MP_DC <<meter>>
+card "**BMS**\n<size:10>Batterie-intern</size>" as MP_BMS <<meter>>
+card "**AC-Sensor**\n<size:10>Inverter-intern</size>" as MP_AC <<meter>>
+card "**Smart Meter**\n<size:10>ext. Zähler</size>" as MP_SM <<meter>>
+
+' === PV → DC-Bus ===
+PV -[#D4A017,bold]down-> DCBUS
+
+' === DC-Bus ↔ [BMS] ↔ Batterie (Abzweig!) ===
+' inst_power > 0: Laden (DC-Bus → Batterie) / < 0: Entladen
+DCBUS <-[#1E8449,bold]left-> MP_BMS
+MP_BMS <-[#1E8449,bold]left-> BAT : <color:#1E8449>**inst_power** [W]</color>\n<size:10>> 0 Laden / < 0 Entladen</size>\n<size:10><i>inst_charge/discharge_power</i></size>
+
+' === DC-Bus → [DC-Sensor] → Inverter ===
+' ACHTUNG: I_DC_Leistung_Norm = PV ± Batterie (gemessen NACH dem Abzweig)
+DCBUS -[#D4A017,bold]down-> MP_DC
+MP_DC -[#D4A017,bold]down-> INV : <color:#D4A017>**I_DC_Leistung_Norm** [W]</color>\n<size:10>PV ± Batterie (Summe am DC-Bus)</size>\n<size:10><i>I_DC_Strom_Norm × I_DC_Spannung_Norm</i></size>
+
+' === Inverter → [AC-Sensor] → Haus ===
+INV -[#336699,bold]right-> MP_AC
+MP_AC -[#336699,bold]right-> HOUSE : <color:#336699>**I_AC_Leistung_Norm** [W]</color>\n<size:10>AC-Ausgang (Σ 3 Phasen)</size>
+
+' === Haus ↔ [Smart Meter] ↔ Netz ===
+' M_AC_Power_Norm > 0 = Einspeisung, < 0 = Bezug
+HOUSE <-[#C0392B,bold]down-> MP_SM
+MP_SM <-[#C0392B,bold]down-> GRID : <color:#C0392B>**M_AC_Power_Norm** [W]</color>\n<size:10>> 0 Einspeisung / < 0 Bezug</size>\n<size:10><i>Σ Phase A + B + C</i></size>
+
+note bottom of BAT
+  **Batterie-Felder:**
+  inst_power (Netto, ±)
+  inst_charge_power (Laden)
+  inst_discharge_power (Entladen)
+  inst_voltage, inst_current
+  SOE (State of Energy %)
+  SOH (State of Health %)
+  available_energy [Wh]
+  max_energy [Wh]
+end note
+
+note bottom of INV
+  **Inverter AC-Detail:**
+  I_AC_Strom_Norm (Σ), _A/_B/_C
+  I_AC_Spannung*_Norm (6 Felder)
+  I_AC_VA_Norm (Scheinleistung)
+  I_AC_VAR_Norm (Blindleistung)
+  I_AC_PF_Norm (cos φ)
+  I_AC_Frequenz_Norm [Hz]
+  I_AC_Energie_WH_Norm [Wh]
+end note
+
+note bottom of GRID
+  **Meter Phasen:**
+  M_AC_Power_A_Norm (L1)
+  M_AC_Power_B_Norm (L2)
+  M_AC_Power_C_Norm (L3)
+end note
+
+legend bottom right
+  **Vorzeichen (Prosumer-Sicht):**
+  M_AC_Power_Norm > 0 → Einspeisung
+  M_AC_Power_Norm < 0 → Bezug
+  inst_power > 0 → Laden / < 0 → Entladen
+
+  **DC-Bus-Bilanz:**
+  I_DC_Leistung_Norm = PV ± Batterie
+  **Reine PV = I_DC_Leistung_Norm + inst_power**
+  (Entladen: inst_power < 0, wird abgezogen)
+  (Laden: inst_power > 0, wird addiert = PV > I_DC)
+
+  **AC-Energiebilanz:**
+  Eigenverbrauch = I_AC_Leistung_Norm
+                 − M_AC_Power_Norm
+
+  I_AC ≈ I_DC (abzgl. Inverterverluste)
+  → Batterie steckt in beiden drin!
+
+  **_Norm-Felder:** Rohwert × 10^^SF^^
+  (Node-RED Function Node)
+end legend
+
+@enduml
