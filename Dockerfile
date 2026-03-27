@@ -1,5 +1,5 @@
 # Use the official Node-RED base image
-FROM nodered/node-red:4.1.6
+FROM nodered/node-red:4.1.8
 
 # Build argument for Docker group GID
 ARG DOCKER_GID=999
@@ -25,14 +25,12 @@ USER node-red
 # Set working directory
 WORKDIR /usr/src/node-red
 
-# Install canvas in the Node-RED directory
-RUN npm install canvas
+# Install canvas — GCC 15 (Alpine 3.21+) rejects std::min(uint32_t, int)
+# type mismatch in Canvas.cc:646. Fix: cast PAGE_SIZE to uint32_t.
+RUN npm install --ignore-scripts canvas && \
+    sed -i 's/PAGE_SIZE/(uint32_t)PAGE_SIZE/g' node_modules/canvas/src/Canvas.cc && \
+    cd node_modules/canvas && npx --yes node-gyp rebuild
 
-# Copy bundled public files into the image so a fresh named volume can be populated
-USER root
-RUN mkdir -p /data/public
-COPY public /data/public
-RUN chown -R 1000:1000 /data/public || true
 USER node-red
 
 # Start Node-RED as node-red user (not root)
